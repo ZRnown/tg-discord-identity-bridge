@@ -1,0 +1,11 @@
+# Core
+discord.py-self>=2.0.0
+telethon>=1.36.0
+loguru>=0.7.0
+
+# Optional: proxy support
+aiohttp[speedups]>=3.9.0
+
+# Dev
+pytest>=8.0
+pytest-asyncio>=0.24
