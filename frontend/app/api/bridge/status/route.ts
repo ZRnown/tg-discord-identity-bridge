@@ -19,6 +19,7 @@ export async function GET(req: NextRequest) {
         ...a,
         token: undefined, // 不暴露 token
       })),
+      capturedTelegramUsers: config.capturedTelegramUsers || [],
     });
   } catch (e: any) {
     return NextResponse.json({ error: String(e?.message || e) }, { status: 500 });

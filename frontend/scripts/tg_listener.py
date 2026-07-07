@@ -55,9 +55,11 @@ async def main():
         print(f"[INFO] Logged in as {getattr(me, 'first_name', '')} {getattr(me, 'last_name', '')}", flush=True)
         print(f"[INFO] Listening to {len(group_ids)} groups: {group_ids}", flush=True)
 
-        # Save avatar base path
+        # Save local media paths for avatars and message media.
         avatar_base = os.path.join(os.getcwd(), ".data", "tg_avatars")
+        media_base = os.path.join(os.getcwd(), ".data", "tg_media")
         os.makedirs(avatar_base, exist_ok=True)
+        os.makedirs(media_base, exist_ok=True)
 
         async def download_avatar(sender, event):
             """Download sender's photo and return a local URL path."""
@@ -117,13 +119,26 @@ async def main():
 
                 # Download avatar
                 photo_url = await download_avatar(sender, event)
+                media_paths = []
+                if getattr(event.message, "media", None):
+                    try:
+                        downloaded = await client.download_media(event.message, file=media_base)
+                        if downloaded:
+                            if isinstance(downloaded, list):
+                                media_paths.extend(str(p) for p in downloaded if p)
+                            else:
+                                media_paths.append(str(downloaded))
+                    except Exception as e:
+                        print(f"[WARN] Media download failed: {e}", flush=True)
 
                 output = {
                     "type": "message",
                     "groupId": chat_id,
+                    "senderId": str(getattr(sender, "id", "")),
                     "senderName": sender_name,
                     "senderUsername": sender_username,
                     "senderPhotoUrl": photo_url,
+                    "mediaPaths": media_paths,
                     "text": text,
                     "timestamp": event.message.date.isoformat() if hasattr(event.message, 'date') else "",
                 }

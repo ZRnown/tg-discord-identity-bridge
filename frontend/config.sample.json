@@ -9,6 +9,16 @@
   },
   "discordAccounts": [],
   "groupMappings": [],
+  "capturedTelegramUsers": [],
+  "contentFilter": {
+    "enabled": true,
+    "blockedKeywords": [],
+    "matchMode": "contains",
+    "caseSensitive": false,
+    "ocrEnabled": true,
+    "ocrLanguage": "chi_sim+eng",
+    "blockOnOcrHit": true
+  },
   "delay": {
     "minSeconds": 1,
     "maxSeconds": 5

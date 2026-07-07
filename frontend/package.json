@@ -22,7 +22,8 @@
     "next": "^16.0.10",
     "proxy-agent": "^6.5.0",
     "react": "^19.2.3",
-    "react-dom": "^19.2.3"
+    "react-dom": "^19.2.3",
+    "tesseract.js": "^7.0.0"
   },
   "optionalDependencies": {
     "@napi-rs/canvas": "^0.1.64"

@@ -12,7 +12,9 @@ config.json
 # Node/frontend
 frontend/node_modules/
 frontend/.next/
+frontend/.data/
 frontend/next-env.d.ts
+frontend/tsconfig.tsbuildinfo
 # pnpm
 frontend/pnpm-lock.yaml
 # OS

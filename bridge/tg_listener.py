@@ -34,7 +34,7 @@ class TelegramListener:
     async def connect(self) -> None:
         """Connect the Telethon client (with auto-auth)."""
         try:
-            from telethon import TelegramClient
+            from telethon import TelegramClient, events
         except ImportError:
             raise RuntimeError(
                 "Telethon not installed. Run: pip install telethon"
@@ -51,7 +51,7 @@ class TelegramListener:
         _log.info(f"Telegram connected as @{self._me.username or self._me.phone}")
 
         # Register message handler
-        @self._client.on(self._client.events.NewMessage)
+        @self._client.on(events.NewMessage)
         async def handler(event):
             await self._event_queue.put(event)
 

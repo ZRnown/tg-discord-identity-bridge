@@ -15,6 +15,7 @@ import path from "node:path";
 import https from "https";
 import http from "http";
 import { URL } from "url";
+import { evaluateContentFilter } from "./contentFilter";
 
 interface LogEntry {
   text: string;
@@ -25,9 +26,11 @@ interface LogEntry {
 interface TgMessageEvent {
   type: "message";
   groupId: string;
+  senderId: string;
   senderName: string;
   senderUsername: string;
   senderPhotoUrl?: string;
+  mediaPaths?: string[];
   text: string;
   timestamp: number;
 }
@@ -126,10 +129,23 @@ class BridgeEngine {
         this.discordClients.set(acc.id, client);
         acc.state = "online";
         acc.errorMessage = "";
+        acc.discordUserId = client.user?.id ? String(client.user.id) : acc.discordUserId;
+        acc.name = client.user?.username || client.user?.tag || acc.name;
+        acc.avatarUrl = client.user?.displayAvatarURL?.({ dynamic: true, size: 128 }) || client.user?.avatarURL?.() || acc.avatarUrl;
+        const storedAcc = config.discordAccounts.find(a => a.id === acc.id);
+        if (storedAcc) Object.assign(storedAcc, {
+          state: acc.state,
+          errorMessage: acc.errorMessage,
+          discordUserId: acc.discordUserId,
+          name: acc.name,
+          avatarUrl: acc.avatarUrl,
+        });
         this.log(`Discord 账号 ${acc.name} 已上线 (ID: ${acc.id})`, "success");
       } catch (e: any) {
         acc.state = "error";
         acc.errorMessage = e.message;
+        const storedAcc = config.discordAccounts.find(a => a.id === acc.id);
+        if (storedAcc) Object.assign(storedAcc, { state: acc.state, errorMessage: acc.errorMessage });
         this.log(`Discord 账号 ${acc.name} 登录失败: ${e.message}`, "error");
       }
     }
@@ -199,6 +215,8 @@ class BridgeEngine {
   // ============ 处理 Telegram 消息事件 ============
   private async handleTgEvent(event: TgMessageEvent, config: BridgeConfig) {
     if (event.type !== "message") return;
+    await this.captureTelegramUser(event);
+    config = await loadBridgeConfig();
 
     // 查找对应的群组映射
     const mapping = config.groupMappings.find(m => m.tgGroupId === event.groupId);
@@ -208,6 +226,17 @@ class BridgeEngine {
 
     this.log(`收到 TG 消息 [${event.senderName}]: ${event.text.slice(0, 50)}...`, "info");
 
+    const filterResult = await evaluateContentFilter(
+      event.text || "",
+      event.mediaPaths || [],
+      config.contentFilter,
+    );
+    if (filterResult.blocked) {
+      const hits = filterResult.hits.map(hit => `${hit.keyword}(${hit.source})`).join(", ");
+      this.log(`消息被关键词屏蔽: ${hits}`, "warn");
+      return;
+    }
+
     // 选择一个 Discord 账号（轮转）
     const availableAccounts = config.discordAccounts.filter(a => a.state === "online");
     if (availableAccounts.length === 0) {
@@ -215,8 +244,9 @@ class BridgeEngine {
       return;
     }
 
-    const account = availableAccounts[this.accountRotationIndex % availableAccounts.length];
-    this.accountRotationIndex++;
+    const assignedAccount = availableAccounts.find(a => a.tgUserId && a.tgUserId === event.senderId);
+    const account = assignedAccount || availableAccounts[this.accountRotationIndex % availableAccounts.length];
+    if (!assignedAccount) this.accountRotationIndex++;
 
     const client = this.discordClients.get(account.id);
     if (!client) {
@@ -267,6 +297,31 @@ class BridgeEngine {
   }
 
   // ============ 修改 Discord 账号身份 ============
+  private async captureTelegramUser(event: TgMessageEvent) {
+    if (!event.senderId) return;
+
+    const config = await loadBridgeConfig();
+    const users = config.capturedTelegramUsers || [];
+    const existing = users.find(u => u.id === event.senderId);
+    const next = {
+      id: event.senderId,
+      name: event.senderName || event.senderUsername || event.senderId,
+      username: event.senderUsername || "",
+      photoUrl: event.senderPhotoUrl,
+      groupId: event.groupId,
+      lastSeenAt: new Date().toISOString(),
+    };
+
+    if (existing) {
+      Object.assign(existing, next);
+    } else {
+      users.unshift(next);
+    }
+
+    config.capturedTelegramUsers = users.slice(0, 500);
+    await saveBridgeConfig(config);
+  }
+
   private async updateDiscordIdentity(client: any, account: DiscordBridgeAccount, event: TgMessageEvent) {
     try {
       // 修改用户名
