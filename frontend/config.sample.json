@@ -1,0 +1,20 @@
+{
+  "telegram": {
+    "apiId": "",
+    "apiHash": "",
+    "phoneNumber": "",
+    "twoFactorPassword": "",
+    "sessionString": "",
+    "connected": false
+  },
+  "discordAccounts": [],
+  "groupMappings": [],
+  "delay": {
+    "minSeconds": 1,
+    "maxSeconds": 5
+  },
+  "typing": {
+    "enabled": true
+  },
+  "bridgeState": "stopped"
+}

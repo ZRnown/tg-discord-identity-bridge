@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TG→Discord 身份桥</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .toggle-checkbox:checked { right: 0; border-color: #6366f1; }
+    .toggle-checkbox:checked + .toggle-label { background-color: #6366f1; }
+    .toggle-checkbox { right: 1.75rem; transition: all 0.3s ease; }
+    .toggle-label { transition: background-color 0.3s ease; }
+  </style>
+</head>
+<body class="bg-slate-50 min-h-screen font-sans text-slate-800">
+
+<!-- ===== 登录页 ===== -->
+<div id="loginPage" class="max-w-md mx-auto mt-20">
+  <div class="rounded-xl border border-slate-200 shadow-lg p-8 bg-white">
+    <h1 class="text-2xl font-bold text-slate-900 text-center mb-2">TG→Discord 身份桥</h1>
+    <p class="text-slate-500 text-center text-sm mb-6">Telegram 消息身份镜像转发</p>
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">用户名</label>
+        <input type="text" id="loginUsername" placeholder="admin"
+          class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">密码</label>
+        <input type="password" id="loginPassword" placeholder="••••••••"
+          class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+          onkeydown="if(event.key==='Enter') handleLogin()">
+      </div>
+      <div id="loginError" class="hidden text-sm text-red-500 text-center"></div>
+      <button onclick="handleLogin()"
+        class="w-full rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500">
+        登录
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 主页面 ===== -->
+<div id="mainPage" class="max-w-4xl mx-auto space-y-6 px-4 py-8" style="display:none;">
+
+  <!-- 顶栏 -->
+  <header class="flex items-center justify-between pb-4 border-b border-slate-200">
+    <div>
+      <h1 class="text-2xl font-bold text-slate-900">TG→Discord 身份桥</h1>
+      <p class="text-slate-500 text-sm mt-1">Telegram 监听 → 换 Discord 账号身份 → 延时发送</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <span id="bridgeStatus" class="inline-flex items-center gap-2 text-sm">
+        <span id="statusDot" class="w-2.5 h-2.5 rounded-full bg-slate-300"></span>
+        <span id="statusText" class="text-slate-500">未启动</span>
+      </span>
+      <button id="startBtn" onclick="toggleBridge()"
+        class="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-500">
+        启动
+      </button>
+      <button onclick="handleLogout()" class="text-sm text-slate-400 hover:text-slate-600">退出</button>
+    </div>
+  </header>
+
+  <!-- Telegram 配置 -->
+  <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+    <h2 class="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+      <span class="text-indigo-600">①</span> Telegram 账号（监听端）
+    </h2>
+    <p class="text-sm text-slate-500 mb-4">配置一个 Telegram 用户账号用于监听群组消息，捕获发送者的用户名和头像。</p>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">API ID</label>
+        <input type="text" id="tgApiId" placeholder="12345678"
+          class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">API Hash</label>
+        <input type="text" id="tgApiHash" placeholder="abcdef1234567890"
+          class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">手机号</label>
+        <input type="text" id="tgPhone" placeholder="+8613800138000"
+          class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">两步验证密码（可选）</label>
+        <input type="password" id="tg2fa" placeholder="如有则填写"
+          class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none">
+      </div>
+    </div>
+    <div class="mt-4 flex items-center gap-3">
+      <button id="tgLoginBtn" onclick="telegramLogin()"
+        class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500">
+        登录 Telegram
+      </button>
+      <span id="tgLoginStatus" class="text-sm text-slate-500"></span>
+    </div>
+    <!-- 登录验证码输入 -->
+    <div id="tgCodeRow" class="mt-3 flex items-center gap-3" style="display:none;">
+      <input type="text" id="tgCode" placeholder="输入收到的验证码"
+        class="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none w-48"
+        onkeydown="if(event.key==='Enter') telegramConfirm()">
+      <button onclick="telegramConfirm()"
+        class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500">
+        确认验证码
+      </button>
+    </div>
+  </section>
+
+  <!-- Discord 账号批量导入 -->
+  <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+    <h2 class="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+      <span class="text-indigo-600">②</span> Discord 账号（发送端）
+    </h2>
+    <p class="text-sm text-slate-500 mb-4">
+      批量导入 Discord 用户 Token（每行一个）。每条消息会用一个账号发送，并自动改为对应 TG 用户的用户名和头像。
+    </p>
+    <div class="flex gap-4">
+      <div class="flex-1">
+        <textarea id="discordTokensInput" rows="6" placeholder="每行粘贴一个 Discord Token&#10;MTIzNDU2Nzg5MDEy...&#10;OTg3NjU0MzIxMDk4..."
+          class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:border-indigo-500 focus:outline-none resize-y"></textarea>
+      </div>
+      <div class="flex flex-col gap-2">
+        <button onclick="importDiscordTokens()"
+          class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 whitespace-nowrap">
+          导入
+        </button>
+        <button onclick="clearDiscordTokens()"
+          class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 whitespace-nowrap">
+          清空
+        </button>
+      </div>
+    </div>
+    <!-- 已导入账号列表 -->
+    <div id="discordAccountsList" class="mt-4 space-y-2"></div>
+    <p id="discordAccountCount" class="mt-2 text-sm text-slate-400"></p>
+  </section>
+
+  <!-- 群组映射 -->
+  <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+    <h2 class="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+      <span class="text-indigo-600">③</span> 群组映射
+    </h2>
+    <p class="text-sm text-slate-500 mb-4">将 Telegram 群组映射到 Discord 频道。监听到 TG 群消息后，会在对应的 Discord 频道发送。</p>
+    <div id="mappingList" class="space-y-3"></div>
+    <button onclick="addMapping()"
+      class="mt-3 rounded-lg border border-dashed border-slate-300 px-4 py-2 text-sm text-slate-500 hover:border-indigo-400 hover:text-indigo-600 w-full">
+      + 添加映射
+    </button>
+  </section>
+
+  <!-- 发送设置 -->
+  <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+    <h2 class="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+      <span class="text-indigo-600">④</span> 发送设置
+    </h2>
+    <div class="space-y-5">
+      <!-- 随机延时 -->
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-2">随机延时（秒）</label>
+        <p class="text-xs text-slate-400 mb-3">每条消息发送前随机等待一段时间，模拟真人行为。</p>
+        <div class="flex items-center gap-3">
+          <input type="number" id="delayMin" min="0" step="1" placeholder="1"
+            class="w-24 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none">
+          <span class="text-slate-400 text-sm">~</span>
+          <input type="number" id="delayMax" min="0" step="1" placeholder="5"
+            class="w-24 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none">
+          <span class="text-slate-400 text-sm">秒</span>
+        </div>
+      </div>
+      <!-- 正在输入效果 -->
+      <div class="flex items-center justify-between">
+        <div>
+          <label class="block text-sm font-medium text-slate-700">正在输入效果</label>
+          <p class="text-xs text-slate-400 mt-1">发送前在 Discord 显示"正在输入…"状态。</p>
+        </div>
+        <div class="relative inline-flex items-center cursor-pointer">
+          <input type="checkbox" id="typingEnabled" class="sr-only toggle-checkbox peer">
+          <div class="toggle-label w-11 h-6 bg-slate-200 rounded-full peer"></div>
+          <div class="absolute left-0.5 top-0.5 bg-white w-5 h-5 rounded-full transition-transform peer-checked:translate-x-5 peer-checked:bg-indigo-600"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 保存按钮 -->
+  <div class="flex justify-end">
+    <button onclick="saveConfig()"
+      class="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-indigo-500 shadow-sm">
+      保存配置
+    </button>
+  </div>
+
+  <!-- 运行日志 -->
+  <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+    <h2 class="text-lg font-semibold text-slate-900 mb-3">运行日志</h2>
+    <div id="logBox" class="bg-slate-900 text-slate-300 rounded-lg p-4 text-xs font-mono h-64 overflow-y-auto space-y-1">
+      <div class="text-slate-500">[等待启动]</div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+// ============ 全局状态 ============
+let config = {};
+let discordAccounts = [];
+let mappings = [];
+let pollTimer = null;
+
+// ============ 登录 ============
+async function checkAuth() {
+  try {
+    const res = await fetch('/api/auth/status');
+    const data = await res.json();
+    if (data.authenticated) {
+      showMainPage();
+      await loadConfig();
+    } else {
+      showLoginPage();
+    }
+  } catch {
+    showLoginPage();
+  }
+}
+
+function showLoginPage(msg) {
+  document.getElementById('loginPage').style.display = 'block';
+  document.getElementById('mainPage').style.display = 'none';
+  if (msg) {
+    const el = document.getElementById('loginError');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+  }
+}
+
+function showMainPage() {
+  document.getElementById('loginPage').style.display = 'none';
+  document.getElementById('mainPage').style.display = 'block';
+}
+
+async function handleLogin() {
+  const username = document.getElementById('loginUsername').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  errEl.classList.add('hidden');
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      errEl.textContent = data.error || '登录失败';
+      errEl.classList.remove('hidden');
+      return;
+    }
+    showMainPage();
+    await loadConfig();
+  } catch (e) {
+    errEl.textContent = '网络错误: ' + e.message;
+    errEl.classList.remove('hidden');
+  }
+}
+
+async function handleLogout() {
+  await fetch('/api/auth/logout', { method: 'POST' });
+  showLoginPage();
+}
+
+// ============ 配置读写 ============
+async function loadConfig() {
+  try {
+    const res = await fetch('/api/bridge/config');
+    if (res.status === 401) { showLoginPage('登录已失效，请重新登录'); return; }
+    const data = await res.json();
+    config = data;
+    discordAccounts = data.discordAccounts || [];
+    mappings = data.groupMappings || [];
+
+    // Telegram
+    const tg = data.telegram || {};
+    document.getElementById('tgApiId').value = tg.apiId || '';
+    document.getElementById('tgApiHash').value = tg.apiHash || '';
+    document.getElementById('tgPhone').value = tg.phoneNumber || '';
+    document.getElementById('tg2fa').value = tg.twoFactorPassword || '';
+
+    // Delay
+    const delay = data.delay || {};
+    document.getElementById('delayMin').value = delay.minSeconds ?? 1;
+    document.getElementById('delayMax').value = delay.maxSeconds ?? 5;
+
+    // Typing
+    document.getElementById('typingEnabled').checked = (data.typing || {}).enabled !== false;
+
+    renderDiscordAccounts();
+    renderMappings();
+    updateBridgeStatus(data.bridgeState || 'stopped');
+  } catch (e) {
+    addLog('加载配置失败: ' + e.message, 'error');
+  }
+}
+
+async function saveConfig() {
+  const payload = {
+    telegram: {
+      apiId: document.getElementById('tgApiId').value.trim(),
+      apiHash: document.getElementById('tgApiHash').value.trim(),
+      phoneNumber: document.getElementById('tgPhone').value.trim(),
+      twoFactorPassword: document.getElementById('tg2fa').value,
+    },
+    discordAccounts,
+    groupMappings: mappings,
+    delay: {
+      minSeconds: parseInt(document.getElementById('delayMin').value) || 1,
+      maxSeconds: parseInt(document.getElementById('delayMax').value) || 5,
+    },
+    typing: {
+      enabled: document.getElementById('typingEnabled').checked,
+    },
+  };
+  try {
+    const res = await fetch('/api/bridge/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) {
+      addLog('配置已保存', 'success');
+    } else {
+      addLog('保存失败: ' + res.status, 'error');
+    }
+  } catch (e) {
+    addLog('保存失败: ' + e.message, 'error');
+  }
+}
+
+// ============ Discord 账号 ============
+function importDiscordTokens() {
+  const text = document.getElementById('discordTokensInput').value.trim();
+  if (!text) return;
+  const tokens = text.split('\n').map(t => t.trim()).filter(t => t && !t.startsWith('#'));
+  let added = 0;
+  for (const token of tokens) {
+    const existing = discordAccounts.find(a => a.token === token);
+    if (!existing) {
+      discordAccounts.push({
+        id: 'dc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        token,
+        name: '账号' + (discordAccounts.length + 1),
+        state: 'idle',
+      });
+      added++;
+    }
+  }
+  document.getElementById('discordTokensInput').value = '';
+  renderDiscordAccounts();
+  addLog('导入了 ' + added + ' 个 Discord 账号', 'success');
+}
+
+function clearDiscordTokens() {
+  if (!confirm('确定清空所有 Discord 账号？')) return;
+  discordAccounts = [];
+  renderDiscordAccounts();
+}
+
+function removeDiscordAccount(id) {
+  discordAccounts = discordAccounts.filter(a => a.id !== id);
+  renderDiscordAccounts();
+}
+
+function renderDiscordAccounts() {
+  const container = document.getElementById('discordAccountsList');
+  const countEl = document.getElementById('discordAccountCount');
+  if (discordAccounts.length === 0) {
+    container.innerHTML = '<p class="text-sm text-slate-400 text-center py-4">暂无 Discord 账号，请在上方批量导入</p>';
+    countEl.textContent = '';
+    return;
+  }
+  container.innerHTML = discordAccounts.map((acc, i) => `
+    <div class="flex items-center gap-3 rounded-lg border border-slate-100 px-3 py-2 hover:bg-slate-50">
+      <span class="text-xs text-slate-400 w-6">#${i + 1}</span>
+      <span class="text-sm font-mono text-slate-600 flex-1 truncate">${acc.token.slice(0, 20)}...${acc.token.slice(-6)}</span>
+      <span class="text-xs px-2 py-0.5 rounded-full ${acc.state === 'online' ? 'bg-green-100 text-green-700' : acc.state === 'sending' ? 'bg-yellow-100 text-yellow-700' : 'bg-slate-100 text-slate-500'}">${acc.state || 'idle'}</span>
+      <button onclick="removeDiscordAccount('${acc.id}')" class="text-red-400 hover:text-red-600 text-sm">删除</button>
+    </div>
+  `).join('');
+  countEl.textContent = '共 ' + discordAccounts.length + ' 个账号';
+}
+
+// ============ 群组映射 ============
+function addMapping() {
+  mappings.push({
+    id: 'map_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+    tgGroupId: '',
+    discordChannelId: '',
+    note: '',
+  });
+  renderMappings();
+}
+
+function removeMapping(id) {
+  mappings = mappings.filter(m => m.id !== id);
+  renderMappings();
+}
+
+function updateMapping(id, field, value) {
+  const m = mappings.find(m => m.id === id);
+  if (m) m[field] = value;
+}
+
+function renderMappings() {
+  const container = document.getElementById('mappingList');
+  if (mappings.length === 0) {
+    container.innerHTML = '<p class="text-sm text-slate-400 text-center py-4">暂无映射，点击下方添加</p>';
+    return;
+  }
+  container.innerHTML = mappings.map(m => `
+    <div class="flex flex-wrap items-center gap-3 rounded-lg border border-slate-100 px-3 py-2.5">
+      <div class="flex-1 min-w-[180px]">
+        <label class="block text-xs text-slate-400 mb-1">Telegram 群组 ID</label>
+        <input type="text" value="${m.tgGroupId || ''}" placeholder="-1001234567890"
+          onchange="updateMapping('${m.id}', 'tgGroupId', this.value)"
+          class="w-full rounded-md border border-slate-200 px-2 py-1.5 text-sm focus:border-indigo-500 focus:outline-none">
+      </div>
+      <div class="text-slate-300 pt-5">→</div>
+      <div class="flex-1 min-w-[180px]">
+        <label class="block text-xs text-slate-400 mb-1">Discord 频道 ID</label>
+        <input type="text" value="${m.discordChannelId || ''}" placeholder="1234567890123456789"
+          onchange="updateMapping('${m.id}', 'discordChannelId', this.value)"
+          class="w-full rounded-md border border-slate-200 px-2 py-1.5 text-sm focus:border-indigo-500 focus:outline-none">
+      </div>
+      <button onclick="removeMapping('${m.id}')" class="text-red-400 hover:text-red-600 text-sm pt-4">删除</button>
+    </div>
+  `).join('');
+}
+
+// ============ Telegram 登录 ============
+async function telegramLogin() {
+  const apiId = document.getElementById('tgApiId').value.trim();
+  const apiHash = document.getElementById('tgApiHash').value.trim();
+  const phone = document.getElementById('tgPhone').value.trim();
+  if (!apiId || !apiHash || !phone) {
+    document.getElementById('tgLoginStatus').textContent = '请填写 API ID、API Hash 和手机号';
+    return;
+  }
+  document.getElementById('tgLoginStatus').textContent = '发送验证码中...';
+  try {
+    const res = await fetch('/api/bridge/telegram/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiId, apiHash, phoneNumber: phone }),
+    });
+    const data = await res.json();
+    if (data.needCode) {
+      document.getElementById('tgCodeRow').style.display = 'flex';
+      document.getElementById('tgLoginStatus').textContent = '请输入收到的验证码';
+    } else if (data.ok) {
+      document.getElementById('tgLoginStatus').textContent = 'Telegram 登录成功';
+      document.getElementById('tgCodeRow').style.display = 'none';
+    } else {
+      document.getElementById('tgLoginStatus').textContent = data.error || '登录失败';
+    }
+  } catch (e) {
+    document.getElementById('tgLoginStatus').textContent = '错误: ' + e.message;
+  }
+}
+
+async function telegramConfirm() {
+  const code = document.getElementById('tgCode').value.trim();
+  const password = document.getElementById('tg2fa').value;
+  if (!code) return;
+  document.getElementById('tgLoginStatus').textContent = '验证中...';
+  try {
+    const res = await fetch('/api/bridge/telegram/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, twoFactorPassword: password }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      document.getElementById('tgLoginStatus').textContent = 'Telegram 登录成功';
+      document.getElementById('tgCodeRow').style.display = 'none';
+    } else if (data.needPassword) {
+      document.getElementById('tgLoginStatus').textContent = '需要两步验证密码';
+    } else {
+      document.getElementById('tgLoginStatus').textContent = data.error || '验证失败';
+    }
+  } catch (e) {
+    document.getElementById('tgLoginStatus').textContent = '错误: ' + e.message;
+  }
+}
+
+// ============ 桥接控制 ============
+async function toggleBridge() {
+  const btn = document.getElementById('startBtn');
+  const state = btn.dataset.state || 'stopped';
+  if (state === 'stopped') {
+    await saveConfig();
+    try {
+      const res = await fetch('/api/bridge/start', { method: 'POST' });
+      const data = await res.json();
+      if (data.ok) {
+        addLog('桥接已启动', 'success');
+        updateBridgeStatus('starting');
+        startPolling();
+      } else {
+        addLog('启动失败: ' + (data.error || '未知错误'), 'error');
+      }
+    } catch (e) {
+      addLog('启动失败: ' + e.message, 'error');
+    }
+  } else {
+    try {
+      await fetch('/api/bridge/stop', { method: 'POST' });
+      addLog('桥接已停止', 'info');
+      updateBridgeStatus('stopped');
+      stopPolling();
+    } catch (e) {
+      addLog('停止失败: ' + e.message, 'error');
+    }
+  }
+}
+
+function updateBridgeStatus(state) {
+  const dot = document.getElementById('statusDot');
+  const text = document.getElementById('statusText');
+  const btn = document.getElementById('startBtn');
+  btn.dataset.state = state;
+  if (state === 'running') {
+    dot.className = 'w-2.5 h-2.5 rounded-full bg-green-500';
+    text.textContent = '运行中';
+    text.className = 'text-green-600';
+    btn.textContent = '停止';
+    btn.className = 'rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500';
+  } else if (state === 'starting') {
+    dot.className = 'w-2.5 h-2.5 rounded-full bg-yellow-500 animate-pulse';
+    text.textContent = '启动中...';
+    text.className = 'text-yellow-600';
+    btn.textContent = '停止';
+    btn.className = 'rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500';
+  } else {
+    dot.className = 'w-2.5 h-2.5 rounded-full bg-slate-300';
+    text.textContent = '未启动';
+    text.className = 'text-slate-500';
+    btn.textContent = '启动';
+    btn.className = 'rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-500';
+  }
+}
+
+function startPolling() {
+  if (pollTimer) return;
+  pollTimer = setInterval(pollStatus, 3000);
+}
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+async function pollStatus() {
+  try {
+    const res = await fetch('/api/bridge/status');
+    const data = await res.json();
+    updateBridgeStatus(data.state || 'stopped');
+    if (data.logs) {
+      for (const line of data.logs) {
+        addLog(line.text, line.level);
+      }
+    }
+    // 更新账号状态
+    if (data.discordAccounts) {
+      discordAccounts = data.discordAccounts;
+      renderDiscordAccounts();
+    }
+  } catch {}
+}
+
+// ============ 日志 ============
+function addLog(text, level = 'info') {
+  const box = document.getElementById('logBox');
+  const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+  const colors = { info: 'text-slate-300', success: 'text-green-400', error: 'text-red-400', warn: 'text-yellow-400' };
+  const div = document.createElement('div');
+  div.className = colors[level] || colors.info;
+  div.textContent = `[${time}] ${text}`;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+  // 限制日志条数
+  while (box.children.length > 200) box.removeChild(box.firstChild);
+}
+
+// ============ 初始化 ============
+checkAuth();
+</script>
+</body>
+</html>
