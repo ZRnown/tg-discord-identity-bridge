@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+# Config with secrets
+config.json
+# Telegram session
+*.session
+*.session-journal
+# Logs
+*.log
+# Node/frontend
+frontend/node_modules/
+frontend/.next/
+frontend/next-env.d.ts
+# pnpm
+frontend/pnpm-lock.yaml
+# OS
+.DS_Store
