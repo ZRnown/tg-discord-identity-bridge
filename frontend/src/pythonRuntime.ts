@@ -1,5 +1,6 @@
 import { spawnSync } from "child_process";
 import path from "path";
+import os from "os";
 
 type PythonResolveOptions = {
   cwd?: string;
@@ -23,8 +24,17 @@ function uniqueNonEmpty(values: Array<string | undefined>): string[] {
 function buildLocalVenvCandidates(root?: string): string[] {
   if (!root) return [];
   return [
+    path.join(root, ".venv", "Scripts", "python.exe"),
+    path.join(root, ".venv", "Scripts", "python"),
     path.join(root, ".venv", "bin", "python"),
     path.join(root, ".venv", "bin", "python3"),
+  ];
+}
+
+function buildBundledRuntimeCandidates(): string[] {
+  const home = os.homedir();
+  return [
+    path.join(home, ".cache", "codex-runtimes", "codex-primary-runtime", "dependencies", "python", "python.exe"),
   ];
 }
 
@@ -39,6 +49,7 @@ export function buildPythonCandidates(options: PythonResolveOptions = {}): strin
     env.PYTHON_EXECUTABLE,
     ...buildLocalVenvCandidates(cwd),
     ...extraRoots.flatMap((root) => buildLocalVenvCandidates(root)),
+    ...buildBundledRuntimeCandidates(),
     "python3.11",
     "python3.10",
     "python3",
@@ -48,7 +59,7 @@ export function buildPythonCandidates(options: PythonResolveOptions = {}): strin
 
 function defaultPythonCandidateCheck(candidate: string): boolean {
   const result = spawnSync(candidate, ["-V"], { stdio: "ignore" });
-  return !result.error;
+  return !result.error && result.status === 0;
 }
 
 export function resolvePythonBin(

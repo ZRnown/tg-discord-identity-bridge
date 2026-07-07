@@ -22,9 +22,9 @@ interface LoginResult {
 let pythonBin: string | null = null;
 let pendingLogin: { process: ChildProcess; resolver: (result: LoginResult) => void } | null = null;
 
-function getPythonBin(): string {
+function getPythonBin(): string | null {
   if (pythonBin) return pythonBin;
-  pythonBin = resolvePythonBin() || "python";
+  pythonBin = resolvePythonBin();
   return pythonBin;
 }
 
@@ -82,6 +82,10 @@ export async function connectWithSession(tg: TelegramAccountConfig): Promise<boo
 function runLoginScript(params: Record<string, any>): Promise<LoginResult> {
   return new Promise((resolve, reject) => {
     const bin = getPythonBin();
+    if (!bin) {
+      reject(new Error("Python not found. Install Python or set PYTHON_BIN."));
+      return;
+    }
     const scriptPath = getScriptPath();
     const proc = spawn(bin, [scriptPath, JSON.stringify(params)], {
       stdio: ["pipe", "pipe", "pipe"],
@@ -90,6 +94,15 @@ function runLoginScript(params: Record<string, any>): Promise<LoginResult> {
 
     let stdout = "";
     let stderr = "";
+    let settled = false;
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+
+    const finish = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      if (timeout) clearTimeout(timeout);
+      callback();
+    };
 
     proc.stdout.on("data", (data) => {
       stdout += data.toString();
@@ -100,23 +113,29 @@ function runLoginScript(params: Record<string, any>): Promise<LoginResult> {
     });
 
     proc.on("close", (code) => {
-      try {
-        const result = JSON.parse(stdout.trim().split("\n").pop() || "{}");
-        resolve(result);
-      } catch {
-        reject(new Error(stderr || `Python script exited with code ${code}`));
-      }
+      finish(() => {
+        try {
+          const result = JSON.parse(stdout.trim().split("\n").pop() || "{}");
+          resolve(result);
+        } catch {
+          reject(new Error(stderr || `Python script exited with code ${code}`));
+        }
+      });
     });
 
     proc.on("error", (err) => {
-      reject(new Error(`Failed to spawn Python: ${err.message}`));
+      finish(() => {
+        reject(new Error(`Failed to spawn Python: ${err.message}`));
+      });
     });
 
     // Set a timeout
-    setTimeout(() => {
-      proc.kill();
-      reject(new Error("Login timeout (30s)"));
-    }, 30000);
+    timeout = setTimeout(() => {
+      finish(() => {
+        proc.kill();
+        reject(new Error("Telegram 登录超时（20 秒）。请检查手机号、代理或 Telegram 网络连通性。"));
+      });
+    }, 20000);
   });
 }
 

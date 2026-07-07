@@ -472,23 +472,34 @@ async function telegramLogin() {
     el('tgLoginStatus').textContent = '请填写手机号';
     return;
   }
+  el('tgLoginBtn').disabled = true;
+  el('tgLoginBtn').textContent = '登录中...';
+  el('tgLoginBtn').classList.add('opacity-60');
   await saveConfig('Telegram 配置已保存');
-  el('tgLoginStatus').textContent = '发送验证码中...';
-  const res = await fetch('/api/bridge/telegram/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ phoneNumber: phone, twoFactorPassword: el('tg2fa').value }),
-  });
-  const data = await res.json();
-  if (data.needCode) {
-    el('tgCodeRow').style.display = 'flex';
-    el('tgLoginStatus').textContent = '请输入收到的验证码';
-  } else if (data.ok) {
-    el('tgCodeRow').style.display = 'none';
-    el('tgLoginStatus').textContent = 'Telegram 登录成功';
-    await loadConfig();
-  } else {
-    el('tgLoginStatus').textContent = data.error || '登录失败';
+  el('tgLoginStatus').textContent = '正在连接 Telegram 并发送验证码，最多等待 20 秒...';
+  try {
+    const res = await fetch('/api/bridge/telegram/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phoneNumber: phone, twoFactorPassword: el('tg2fa').value }),
+    });
+    const data = await res.json();
+    if (data.needCode) {
+      el('tgCodeRow').style.display = 'flex';
+      el('tgLoginStatus').textContent = '请输入收到的验证码';
+    } else if (data.ok) {
+      el('tgCodeRow').style.display = 'none';
+      el('tgLoginStatus').textContent = 'Telegram 登录成功';
+      await loadConfig();
+    } else {
+      el('tgLoginStatus').textContent = data.error || '登录失败';
+    }
+  } catch (e) {
+    el('tgLoginStatus').textContent = '登录请求失败: ' + e.message;
+  } finally {
+    el('tgLoginBtn').disabled = false;
+    el('tgLoginBtn').textContent = '登录 Telegram';
+    el('tgLoginBtn').classList.remove('opacity-60');
   }
 }
 async function telegramConfirm() {
