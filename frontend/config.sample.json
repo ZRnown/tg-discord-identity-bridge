@@ -11,12 +11,9 @@
   "groupMappings": [],
   "capturedTelegramUsers": [],
   "contentFilter": {
-    "enabled": true,
     "blockedKeywords": [],
-    "matchMode": "contains",
+    "ocrBlockedKeywords": [],
     "caseSensitive": false,
-    "ocrEnabled": true,
-    "ocrLanguage": "chi_sim+eng",
     "blockOnOcrHit": true
   },
   "delay": {

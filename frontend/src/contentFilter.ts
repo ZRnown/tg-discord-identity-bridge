@@ -14,44 +14,50 @@ type FilterResult = {
 };
 
 let ocrWorkerPromise: Promise<any> | null = null;
-let ocrWorkerLanguage = "";
+const DEFAULT_OCR_LANGUAGE = "chi_sim+eng";
 
 function normalize(value: string, caseSensitive: boolean) {
-  return caseSensitive ? value : value.toLowerCase();
+  let output = String(value ?? "");
+  try {
+    output = output.normalize("NFKC");
+  } catch {}
+  output = output.replace(/\p{Cf}/gu, "");
+  return caseSensitive ? output : output.toLowerCase();
 }
 
 function splitKeywords(keywords: string[]) {
   return keywords.map(k => k.trim()).filter(Boolean);
 }
 
-function matchKeywords(text: string, config: ContentFilterConfig, source: "text" | "ocr"): FilterHit[] {
-  const keywords = splitKeywords(config.blockedKeywords || []);
+function matchKeywords(
+  text: string,
+  keywordsInput: string[],
+  caseSensitive: boolean,
+  source: "text" | "ocr",
+): FilterHit[] {
+  const keywords = splitKeywords(keywordsInput || []);
   if (!text || keywords.length === 0) return [];
 
-  const haystack = normalize(text, config.caseSensitive);
+  const haystack = normalize(text, caseSensitive);
   return keywords.filter(keyword => {
-    const needle = normalize(keyword, config.caseSensitive);
-    if (config.matchMode === "exact") {
-      return haystack.split(/\s+/).includes(needle);
-    }
+    const needle = normalize(keyword, caseSensitive);
     return haystack.includes(needle);
   }).map(keyword => ({ keyword, source }));
 }
 
-async function getOcrWorker(language: string) {
-  if (!ocrWorkerPromise || ocrWorkerLanguage !== language) {
-    ocrWorkerLanguage = language;
+async function getOcrWorker() {
+  if (!ocrWorkerPromise) {
     ocrWorkerPromise = import("tesseract.js").then(async ({ createWorker }) => {
-      return createWorker(language);
+      return createWorker(DEFAULT_OCR_LANGUAGE);
     });
   }
   return ocrWorkerPromise;
 }
 
-async function recognizeImage(filePath: string, language: string): Promise<string> {
+async function recognizeImage(filePath: string): Promise<string> {
   const resolved = path.resolve(filePath);
   await fs.access(resolved);
-  const worker = await getOcrWorker(language);
+  const worker = await getOcrWorker();
   const result = await worker.recognize(resolved);
   return result?.data?.text || "";
 }
@@ -65,21 +71,22 @@ export async function evaluateContentFilter(
   mediaPaths: string[],
   config: ContentFilterConfig,
 ): Promise<FilterResult> {
-  if (!config.enabled) return { blocked: false, hits: [], ocrText: "" };
-
-  const textHits = matchKeywords(text, config, "text");
+  const textKeywords = config.blockedKeywords || [];
+  const ocrKeywords = config.ocrBlockedKeywords || [];
+  const caseSensitive = config.caseSensitive === true;
+  const textHits = matchKeywords(text, textKeywords, caseSensitive, "text");
   let ocrText = "";
   let ocrHits: FilterHit[] = [];
 
-  if (config.ocrEnabled && mediaPaths.length > 0) {
+  if (ocrKeywords.length > 0 && mediaPaths.length > 0) {
     for (const mediaPath of mediaPaths.filter(isImagePath)) {
       try {
-        ocrText += "\n" + await recognizeImage(mediaPath, config.ocrLanguage || "chi_sim+eng");
+        ocrText += "\n" + await recognizeImage(mediaPath);
       } catch (e) {
         console.warn("[ContentFilter] OCR failed:", e);
       }
     }
-    ocrHits = matchKeywords(ocrText, config, "ocr");
+    ocrHits = matchKeywords(ocrText, ocrKeywords, caseSensitive, "ocr");
   }
 
   const hits = textHits.concat(ocrHits);

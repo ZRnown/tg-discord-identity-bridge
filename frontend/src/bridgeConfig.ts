@@ -58,12 +58,9 @@ export interface CapturedTelegramUser {
 }
 
 export interface ContentFilterConfig {
-  enabled: boolean;
   blockedKeywords: string[];
-  matchMode: "contains" | "exact";
+  ocrBlockedKeywords: string[];
   caseSensitive: boolean;
-  ocrEnabled: boolean;
-  ocrLanguage: string;
   blockOnOcrHit: boolean;
 }
 
@@ -93,12 +90,9 @@ export const DEFAULT_CONFIG: BridgeConfig = {
   groupMappings: [],
   capturedTelegramUsers: [],
   contentFilter: {
-    enabled: true,
     blockedKeywords: [],
-    matchMode: "contains",
+    ocrBlockedKeywords: [],
     caseSensitive: false,
-    ocrEnabled: true,
-    ocrLanguage: "chi_sim+eng",
     blockOnOcrHit: true,
   },
   delay: { minSeconds: 1, maxSeconds: 5 },
@@ -116,6 +110,16 @@ export async function loadBridgeConfig(): Promise<BridgeConfig> {
       ...(parsed.telegram || {}),
       apiId: parsed.telegram?.apiId || DEFAULT_TELEGRAM_API_ID,
       apiHash: parsed.telegram?.apiHash || DEFAULT_TELEGRAM_API_HASH,
+    };
+    merged.contentFilter = {
+      blockedKeywords: Array.isArray(parsed.contentFilter?.blockedKeywords)
+        ? parsed.contentFilter.blockedKeywords
+        : [],
+      ocrBlockedKeywords: Array.isArray(parsed.contentFilter?.ocrBlockedKeywords)
+        ? parsed.contentFilter.ocrBlockedKeywords
+        : [],
+      caseSensitive: parsed.contentFilter?.caseSensitive === true,
+      blockOnOcrHit: parsed.contentFilter?.blockOnOcrHit !== false,
     };
     return merged;
   } catch {
